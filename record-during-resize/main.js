@@ -20,7 +20,7 @@ window.onload = () => {
     blobs = [];
 
     rec = new MediaRecorder(stream, {
-      mimeType: "video/webm; codecs=h264, opus",
+      mimeType: "video/webm;",
     });
     rec.ondataavailable = (e) => blobs.push(e.data);
     rec.onstop = async () => {

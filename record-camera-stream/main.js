@@ -11,7 +11,7 @@ window.onload = () => {
 
     stream = await navigator.mediaDevices.getUserMedia({
       video: true,
-      audio: false
+      audio: true
     });
 
     videoElement.srcObject = stream;

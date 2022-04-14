@@ -1,6 +1,5 @@
 window.onload = () => {
   const videoElement = document.getElementById("videoElement");
-  const recordAudioBtn = document.getElementById("audioCheckbox");
   const captureBtn = document.getElementById("captureBtn");
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
@@ -15,14 +14,13 @@ window.onload = () => {
   captureBtn.onclick = async () => {
     download.style.display = "none";
 
-    let recordAudio = recordAudioBtn.checked;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: recordAudio
+        audio: true
       });
     } catch (exception) {
-      errorMsg("getUserMedia failed", exception.message);
+      errorMsg("getDisplayMedia failed", exception.message);
       console.log(exception);
       return;
     }

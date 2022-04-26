@@ -1,0 +1,180 @@
+<head>
+    <h1>Encoder samples</h1>
+</head>
+<body>
+    <div>
+      <p>Select a codec: </p>
+      <select id="codecSelection">
+        <option value="opus" selected>Opus</option>
+        <option value="mp4a.40.2">AAC</option>
+      </select>
+    </div>
+    <div style="margin:10px">
+        <button id="encodeGUM">Encode microphone stream</button>
+        <button id="encodeChunks">Encode generated chunks</button>
+        <button id="stopButton" disabled="true">Stop</button>
+    </div>
+    <div id="errorMsg" style="color:red">
+    </div>
+    <div id="outputGrid" style="display:grid;grid-template-columns: 300px 300px;">
+      <div>
+        <p>frames/sec: </p>
+        <p id="perf"></p>
+      </div>
+      <div id="audioColumn">
+          <p>Encoded audio chunks size</p>
+      </div>
+    </div>
+    <script>
+      let dataEncoded = 0;
+      let startTime;
+      let dataSize = 10000
+      let dataArray = new Int16Array(dataSize);
+      let volume = 0.2;
+      let seconds = 0.5;
+      let tone = 441;
+      function sineWaveAt(sampleNumber, tone) {
+        var sampleFreq = 48000 / tone
+        return Math.sin(sampleNumber / (sampleFreq / (Math.PI * 2)))
+      }
+      for (var i = 0; i < dataSize; i++) {
+        dataArray[i] = sineWaveAt(i, tone) * volume
+      }
+      let init = {
+        format: "s16",
+        sampleRate: 48000,
+        numberOfFrames: dataSize,
+        numberOfChannels: 1,
+        timestamp: 0,
+        data: dataArray
+      }
+      let audioData = new AudioData(init);
+      let clonedData;
+      let audioEncoder;
+      let end;
+      let stream;
+      let track;
+
+      function errorMsg(msg, error) {
+        const errorElement = document.querySelector('#errorMsg');
+        errorElement.innerHTML += `<p>${msg}</p>`;
+        console.log(error);
+      }
+
+      function onEncoderError(error) {
+        errorMsg(`Encode error: ${error.name}`, error);
+      }
+
+      function logOutput(encodedChunk) {
+        let outputElement;
+        if (encodedChunk instanceof EncodedAudioChunk)
+          outputElement = document.querySelector('#audioColumn');
+        else
+          outputElement = document.querySelector('#videoColumn');
+
+        //outputElement.innerHTML += `<p>${encodedChunk.byteLength}</p>`;
+        perfElement = document.querySelector('#perf');
+        let endTime = performance.now();
+        let framesPerMs = dataEncoded / (endTime - startTime);
+        perfElement.innerHTML = `<p>${framesPerMs}</p>`;
+      }
+
+      function readAndEncode(reader, encoder, writer) {
+      if (end)
+          return;
+        if (writer) {
+          writer.write(audioData.clone()).then(() => {
+            dataEncoded += dataSize;
+            reader.read().then((result) => {
+              if (result.done)
+                return;
+              //dataEncoded += result.value.numberOfFrames;
+              encoder.encode(result.value);
+
+              // Keep reading until the stream closes.
+              readAndEncode(reader, encoder, writer);
+            })
+          })
+        } else {
+          reader.read().then((result) => {
+              if (result.done)
+                return;
+              //dataEncoded += result.value.numberOfFrames;
+              encoder.encode(result.value);
+
+              // Keep reading until the stream closes.
+              readAndEncode(reader, encoder, writer);
+            })
+        }
+      }
+
+      function createAudioEncoder() {
+        codecSelection = document.querySelector('#codecSelection');
+        const audioEncoderConfig = {
+          codec: codecSelection.value,
+          sampleRate: 48000,
+          numberOfChannels: 1,
+        };
+        audioEncoder = new AudioEncoder({
+          output: logOutput,
+          error: onEncoderError,
+        });
+        audioEncoder.configure(audioEncoderConfig);
+        return audioEncoder;
+      }
+
+      async function startEncoding(audioTrack, writer) {
+        document.querySelector('#stopButton').disabled = false;
+        encoder = await createAudioEncoder();
+        end = false;
+
+        // First, the tracks are converted to ReadableStreams of unencoded audio.
+        // See https://w3c.github.io/mediacapture-transform/#track-processor.
+        const audio = (new MediaStreamTrackProcessor(audioTrack)).readable;
+
+        startTime = performance.now();
+        //writer.ready.then(() => {
+          track = audio.getReader();
+          readAndEncode(track, encoder, writer);
+        //});
+      }
+
+      function handleError(error) {
+        errorMsg(`getUserMedia error: ${error.name}`, error);
+      }
+
+      async function initGumEncoding(e) {
+        try {
+          const constraints = {audio: true, video: false};
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          startEncoding(stream.getAudioTracks()[0]);
+          e.target.disabled = true;
+        } catch (e) {
+          handleError(e);
+        }
+      }
+
+      async function initChunkEncoding(e) {
+        document.querySelector('#encodeChunks').disabled = true;
+        track = new MediaStreamTrackGenerator({kind: 'audio'});
+        writer = track.writable.getWriter();
+        startEncoding(track, writer);
+      }
+
+      async function stop(e) {
+        document.querySelector('#encodeGUM').disabled = false;
+        document.querySelector('#encodeChunks').disabled = false;
+        document.querySelector('#stopButton').disabled = true;
+        end = true;
+        dataEncoded = 0;
+        if (track) {
+          track.stop();
+        }
+        stream = undefined;
+      }
+
+      document.querySelector('#encodeGUM').addEventListener('click', e => initGumEncoding(e));
+      document.querySelector('#encodeChunks').addEventListener('click', e => initChunkEncoding(e));
+      document.querySelector('#stopButton').addEventListener('click', e => stop(e));
+    </script>
+</body>
